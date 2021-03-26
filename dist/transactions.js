@@ -168,7 +168,12 @@ const validateTxIn = (txIn, transaction, aUnspentTxOuts) => {
     }
     const address = referencedUTxOut.address;
     const key = ec.keyFromPublic(address, "hex");
-    return key.verify(transaction.id, txIn.signature);
+    const validateSignature = key.verify(transaction.id, txIn.signature);
+    if (!validateSignature) {
+        console.log(`invalid txIn signature: ${txIn.signature} txId: ${transaction.id} address ${referencedUTxOut.address}`);
+        return false;
+    }
+    return true;
 };
 const isValidTransactionsStructure = (transactions) => {
     return transactions
@@ -248,7 +253,7 @@ const processTransactions = (aTransactions, aUnspentTxOuts, blockIndex) => {
 exports.processTransactions = processTransactions;
 const toHexString = (byteArray) => {
     return Array.from(byteArray, (byte) => {
-        return ("0" + (byte & 0xff).toString(16)).slice(-1);
+        return ("0" + (byte & 0xff).toString(16)).slice(-2);
     }).join("");
 };
 const getPublicKey = (aPrivateKey) => {

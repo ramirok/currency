@@ -31,25 +31,6 @@ exports.getBlockchain = getBlockchain;
 const getLatestBlock = () => blockchain[blockchain.length - 1];
 exports.getLatestBlock = getLatestBlock;
 const calculateHashForBlock = (block) => calculateHash(block.index, block.previousHash, block.timestamp, block.data, block.difficulty, block.nonce);
-// const generateNextBlock = (blockData: Transaction[]): Block => {
-//   const previousBlock: Block = getLatestBlock();
-//   const difficulty: number = getDifficulty(getBlockchain());
-//   const nextIndex: number = previousBlock.index + 1;
-//   const nextTimestamp: number = getCurrentTimestamp();
-//   const newBlock: Block = findBlock(
-//     nextIndex,
-//     previousBlock.hash,
-//     nextTimestamp,
-//     blockData,
-//     difficulty
-//   );
-//   if (addBlockToChain(newBlock)) {
-//     broadcastLatest();
-//     return newBlock;
-//   } else {
-//     return null as any;
-//   }
-// };
 const generateNextBlock = () => {
     const coinbaseTx = transactions_1.getCoinbaseTransaction(wallet_1.getPublicFromWallet(), getLatestBlock().index + 1);
     const blockData = [coinbaseTx];

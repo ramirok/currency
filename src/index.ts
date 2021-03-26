@@ -55,7 +55,7 @@ const initHttpServer = (myHttpPort: number) => {
     }
   });
 
-  app.post("/balance", (_req, res) => {
+  app.get("/balance", (_req, res) => {
     const balance: number = getAccountBalance();
     res.send({ balance });
   });
@@ -67,7 +67,7 @@ const initHttpServer = (myHttpPort: number) => {
       const resp = generatenextBlockWithTransactions(address, amount);
       res.send(resp);
     } catch (e) {
-      console.log(e);
+      console.log(e.message);
       res.status(400).send(e.message);
     }
   });
