@@ -3,10 +3,12 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.replaceChain = exports.isValidBlockStructure = exports.generateNextBlock = exports.getLatestBlock = exports.getBlockchain = exports.Block = exports.addBlockToChain = void 0;
+exports.replaceChain = exports.isValidBlockStructure = exports.getAccountBalance = exports.generatenextBlockWithTransactions = exports.generateRawNextBlock = exports.generateNextBlock = exports.getLatestBlock = exports.getBlockchain = exports.Block = exports.addBlockToChain = void 0;
 const crypto_js_1 = __importDefault(require("crypto-js"));
 const p2p_1 = require("./p2p");
 const util_1 = require("./util");
+const transactions_1 = require("./transactions");
+const wallet_1 = require("./wallet");
 const BLOCK_GENERATION_INTERVAL = 10;
 const DIFFICULTY_ADJUSTMENT_INTERVAL = 10;
 class Block {
@@ -21,42 +23,65 @@ class Block {
     }
 }
 exports.Block = Block;
-const genesisBlock = new Block(0, "816534932c2b7154836da6afc367695e6337db8a921823784c14378abed4f7d7", null, 1465154705, "this is the genesis", 0, 0);
+const genesisBlock = new Block(0, "816534932c2b7154836da6afc367695e6337db8a921823784c14378abed4f7d7", null, 1465154705, [], 0, 0);
 let blockchain = [genesisBlock];
+let unspentTxOuts = [];
 const getBlockchain = () => blockchain;
 exports.getBlockchain = getBlockchain;
 const getLatestBlock = () => blockchain[blockchain.length - 1];
 exports.getLatestBlock = getLatestBlock;
 const calculateHashForBlock = (block) => calculateHash(block.index, block.previousHash, block.timestamp, block.data, block.difficulty, block.nonce);
-const generateNextBlock = (blockData) => {
-    const previousBlock = getLatestBlock();
-    const difficulty = getDifficulty(getBlockchain());
-    console.log("difficulty: " + difficulty);
-    const nextIndex = previousBlock.index + 1;
-    const nextTimestamp = getCurrentTimestamp();
-    const newBlock = findBlock(nextIndex, previousBlock.hash, nextTimestamp, blockData, difficulty);
-    addBlock(newBlock);
-    p2p_1.broadcastLatest();
-    return newBlock;
+// const generateNextBlock = (blockData: Transaction[]): Block => {
+//   const previousBlock: Block = getLatestBlock();
+//   const difficulty: number = getDifficulty(getBlockchain());
+//   const nextIndex: number = previousBlock.index + 1;
+//   const nextTimestamp: number = getCurrentTimestamp();
+//   const newBlock: Block = findBlock(
+//     nextIndex,
+//     previousBlock.hash,
+//     nextTimestamp,
+//     blockData,
+//     difficulty
+//   );
+//   if (addBlockToChain(newBlock)) {
+//     broadcastLatest();
+//     return newBlock;
+//   } else {
+//     return null as any;
+//   }
+// };
+const generateNextBlock = () => {
+    const coinbaseTx = transactions_1.getCoinbaseTransaction(wallet_1.getPublicFromWallet(), getLatestBlock().index + 1);
+    const blockData = [coinbaseTx];
+    return generateRawNextBlock(blockData);
 };
 exports.generateNextBlock = generateNextBlock;
-const calculateHash = (index, previousHash, timestamp, data, difficulty, nonce) => crypto_js_1.default.SHA256(index + previousHash + timestamp + data + difficulty + nonce).toString();
-const addBlock = (newBlock) => {
-    if (isValidNewBlock(newBlock, getLatestBlock())) {
-        blockchain.push(newBlock);
+const generatenextBlockWithTransactions = (receiverAddress, amount) => {
+    if (!transactions_1.isValidAddress(receiverAddress)) {
+        throw new Error("invalid address");
     }
+    if (typeof amount !== "number") {
+        throw new Error("invalid amount");
+    }
+    const coinbaseTx = transactions_1.getCoinbaseTransaction(wallet_1.getPublicFromWallet(), getLatestBlock().index + 1);
+    const tx = wallet_1.createTransaction(receiverAddress, amount, wallet_1.getPrivateFromWallet(), unspentTxOuts);
+    const blockData = [coinbaseTx, tx];
+    return generateRawNextBlock(blockData);
 };
+exports.generatenextBlockWithTransactions = generatenextBlockWithTransactions;
+const calculateHash = (index, previousHash, timestamp, data, difficulty, nonce) => crypto_js_1.default.SHA256(index + previousHash + timestamp + data + difficulty + nonce).toString();
 const isValidBlockStructure = (block) => {
     return (typeof block.index === "number" &&
         typeof block.hash === "string" &&
         typeof block.previousHash === "string" &&
         typeof block.timestamp === "number" &&
-        typeof block.data === "string");
+        typeof block.data === "object");
 };
 exports.isValidBlockStructure = isValidBlockStructure;
 const isValidNewBlock = (newBlock, previousBlock) => {
     if (!isValidBlockStructure(newBlock)) {
-        console.log("invalid structure");
+        console.log("invalid block structure");
+        console.log(newBlock);
         return false;
     }
     if (previousBlock.index + 1 !== newBlock.index) {
@@ -92,8 +117,15 @@ const isValidChain = (blockchainToValidate) => {
 };
 const addBlockToChain = (newBlock) => {
     if (isValidNewBlock(newBlock, getLatestBlock())) {
-        blockchain.push(newBlock);
-        return true;
+        const retVal = transactions_1.processTransactions(newBlock.data, unspentTxOuts, newBlock.index);
+        if (retVal === null) {
+            return false;
+        }
+        else {
+            blockchain.push(newBlock);
+            unspentTxOuts = retVal;
+            return true;
+        }
     }
     return false;
 };
@@ -130,6 +162,10 @@ const findBlock = (index, previousHash, timestamp, data, difficulty) => {
         nonce++;
     }
 };
+const getAccountBalance = () => {
+    return wallet_1.getBalance(wallet_1.getPublicFromWallet(), unspentTxOuts);
+};
+exports.getAccountBalance = getAccountBalance;
 const getDifficulty = (aBlockchain) => {
     const latestBlock = aBlockchain[blockchain.length - 1];
     if (latestBlock.index % DIFFICULTY_ADJUSTMENT_INTERVAL === 0 &&
@@ -179,4 +215,19 @@ const hasValidHash = (block) => {
     return true;
 };
 const getCurrentTimestamp = () => Math.round(new Date().getTime() / 1000);
+const generateRawNextBlock = (blockData) => {
+    const previousBlock = getLatestBlock();
+    const difficulty = getDifficulty(getBlockchain());
+    const nextIndex = previousBlock.index + 1;
+    const nextTimestamp = getCurrentTimestamp();
+    const newBlock = findBlock(nextIndex, previousBlock.hash, nextTimestamp, blockData, difficulty);
+    if (addBlockToChain(newBlock)) {
+        p2p_1.broadcastLatest();
+        return newBlock;
+    }
+    else {
+        return null;
+    }
+};
+exports.generateRawNextBlock = generateRawNextBlock;
 // hashMatchesDifficulty used 2 times
