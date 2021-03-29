@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync } from "fs";
+import { existsSync, readFileSync, writeFileSync, unlinkSync } from "fs";
 import * as ecdsa from "elliptic";
 import _ from "lodash";
 import {
@@ -38,14 +38,29 @@ const initWallet = () => {
   }
   const newPrivateKey = generatePrivateKey();
   writeFileSync(privateKeyLocation, newPrivateKey);
-  console.log("new wallet with private key created");
+  console.log(`new wallet with private key created to: ${privateKeyLocation}`);
+};
+
+const deleteWallet = () => {
+  if (existsSync(privateKeyLocation)) {
+    unlinkSync(privateKeyLocation);
+  }
 };
 
 const getBalance = (address: string, unspentTxOuts: UnspentTxOut[]): number => {
-  return _(unspentTxOuts)
-    .filter((uTxO: UnspentTxOut) => uTxO.address === address)
+  return _(findUnspentTxOuts(address, unspentTxOuts))
     .map((uTxO: UnspentTxOut) => uTxO.amount)
     .sum();
+};
+
+const findUnspentTxOuts = (
+  ownerAddress: string,
+  unspentTxOuts: UnspentTxOut[]
+) => {
+  return _.filter(
+    unspentTxOuts,
+    (uTxO: UnspentTxOut) => uTxO.address === ownerAddress
+  );
 };
 
 const findTxOutsForAmount = (
@@ -63,7 +78,11 @@ const findTxOutsForAmount = (
     }
   }
 
-  throw new Error("not enough coins to send transaction");
+  throw new Error(
+    `Can not create transaction from the available unspent transaction outputs. Required amount: ${amount}. Available unspentTxOuts: ${JSON.stringify(
+      myUnspentTxOuts
+    )}`
+  );
 };
 
 const createTxOuts = (
@@ -81,17 +100,46 @@ const createTxOuts = (
   }
 };
 
+const filterTxPoolTxs = (
+  unspenttxOuts: UnspentTxOut[],
+  transactionPool: Transaction[]
+): UnspentTxOut[] => {
+  const txIns: TxIn[] = _(transactionPool)
+    .map((tx: Transaction) => tx.txIns)
+    .flatten()
+    .value();
+  const removable: UnspentTxOut[] = [];
+  for (const unspentTxOut of unspenttxOuts) {
+    const txIn = _.find(txIns, (aTxIn) => {
+      return (
+        aTxIn.txOutIndex === unspentTxOut.txOutIndex &&
+        aTxIn.txOutId === unspentTxOut.txOutId
+      );
+    });
+
+    if (txIn === undefined) {
+    } else {
+      removable.push(unspentTxOut);
+    }
+  }
+  return _.without(unspenttxOuts, ...removable);
+};
+
 const createTransaction = (
   receiverAddress: string,
   amount: number,
   privateKey: string,
-  unspentTxOuts: UnspentTxOut[]
+  unspentTxOuts: UnspentTxOut[],
+  txPool: Transaction[]
 ): Transaction => {
+  console.log(`txPool: ${JSON.stringify(txPool)}`);
   const myAddress: string = getPublicKey(privateKey);
-  const myUnspentTxOuts = unspentTxOuts.filter(
+  const myUnspentTxOutsA = unspentTxOuts.filter(
     (uTxO: UnspentTxOut) => uTxO.address === myAddress
   );
+  const myUnspentTxOuts = filterTxPoolTxs(myUnspentTxOutsA, txPool);
 
+  // filter from unspentOutputs such inputs that are referenced in pool
   const { includedUnspentTxOuts, leftOverAmount } = findTxOutsForAmount(
     amount,
     myUnspentTxOuts
@@ -115,6 +163,7 @@ const createTransaction = (
     txIn.signature = signTxIn(tx, index, privateKey, unspentTxOuts);
     return txIn;
   });
+
   return tx;
 };
 
@@ -125,4 +174,6 @@ export {
   getBalance,
   generatePrivateKey,
   initWallet,
+  findUnspentTxOuts,
+  deleteWallet,
 };

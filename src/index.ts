@@ -5,9 +5,13 @@ import {
   generateRawNextBlock,
   getAccountBalance,
   generatenextBlockWithTransactions,
+  getUnspentTxOuts,
+  getMyUnspentTransactionOutputs,
+  sendTransaction,
 } from "./blockchain";
 import { connectToPeers, getSockets, initP2PServer } from "./p2p";
-import { initWallet } from "./wallet";
+import { getTransactionPool } from "./transactionPool";
+import { getPublicFromWallet, initWallet } from "./wallet";
 
 const httpPort: number = parseInt(process.env.HTTP_PORT as string) || 3001;
 const p2pPort: number = parseInt(process.env.P2P_PORT as string) || 6001;
@@ -31,6 +35,14 @@ const initHttpServer = (myHttpPort: number) => {
 
   app.get("/blocks", (_req, res) => {
     res.send(getBlockchain());
+  });
+
+  app.get("unspentTransactionsOutputs", (_req, res) => {
+    res.send(getUnspentTxOuts());
+  });
+
+  app.get("/myUnspentTransactionOutputs", (_req, res) => {
+    res.send(getMyUnspentTransactionOutputs());
   });
 
   app.post("/mineRawBlock", (req, res) => {
@@ -60,6 +72,11 @@ const initHttpServer = (myHttpPort: number) => {
     res.send({ balance });
   });
 
+  app.get("/address", (_req, res) => {
+    const address: string = getPublicFromWallet();
+    res.send({ address });
+  });
+
   app.post("/mineTransaction", (req, res) => {
     const address = req.body.address;
     const amount = req.body.amount;
@@ -70,6 +87,26 @@ const initHttpServer = (myHttpPort: number) => {
       console.log(e.message);
       res.status(400).send(e.message);
     }
+  });
+
+  app.post("/sendTransaction", (req, res) => {
+    try {
+      const address = req.body.address;
+      const amount = req.body.amount;
+
+      if (address === undefined || amount === undefined) {
+        throw new Error("invalid address or amount");
+      }
+      const resp = sendTransaction(address, amount);
+      res.send(resp);
+    } catch (error) {
+      console.log(error.message);
+      res.status(400).send(error.message);
+    }
+  });
+
+  app.get("/transactionPool", (_req, res) => {
+    res.send(getTransactionPool());
   });
 
   app.get("/peers", (_req, res) => {
@@ -83,6 +120,11 @@ const initHttpServer = (myHttpPort: number) => {
   app.post("/addPeer", (req, res) => {
     connectToPeers(req.body.peer);
     res.send();
+  });
+
+  app.post("/stop", (_req, res) => {
+    res.send({ msg: "stopping server" });
+    process.exit();
   });
 
   app.listen(myHttpPort, () => {
