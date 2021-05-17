@@ -8,16 +8,20 @@ const blockchain_1 = require("./blockchain");
 const p2p_1 = require("./p2p");
 const transactionPool_1 = require("./transactionPool");
 const wallet_1 = require("./wallet");
+const lodash_1 = __importDefault(require("lodash"));
+const ws_1 = __importDefault(require("ws"));
+console.log(ws_1.default);
 const httpPort = parseInt(process.env.HTTP_PORT) || 3001;
 const p2pPort = parseInt(process.env.P2P_PORT) || 6001;
+const errorHandler = (err, _req, res, _next) => {
+    if (err) {
+        res.status(400).send(err.message);
+    }
+};
 const initHttpServer = (myHttpPort) => {
     const app = express_1.default();
     app.use(express_1.default.json());
-    app.use((err, _req, res, _next) => {
-        if (err) {
-            res.status(400).send(err.message);
-        }
-    });
+    app.use(errorHandler);
     app.get("/blocks", (_req, res) => {
         res.send(blockchain_1.getBlockchain());
     });
@@ -97,6 +101,21 @@ const initHttpServer = (myHttpPort) => {
     app.post("/stop", (_req, res) => {
         res.send({ msg: "stopping server" });
         process.exit();
+    });
+    app.get("/block/:hash", (req, res) => {
+        const block = lodash_1.default.find(blockchain_1.getBlockchain(), { hash: req.params.hash });
+        res.send(block);
+    });
+    app.get("/transaction/:id", (req, res) => {
+        const tx = lodash_1.default(blockchain_1.getBlockchain())
+            .map((blocks) => blocks.data)
+            .flatten()
+            .find({ id: req.params.id });
+        res.send(tx);
+    });
+    app.get("/address/:address", (req, res) => {
+        const unspentTxOuts = lodash_1.default.filter(blockchain_1.getUnspentTxOuts(), (uTxO) => uTxO.address === req.params.address);
+        res.send({ unspentTxOuts: unspentTxOuts });
     });
     app.listen(myHttpPort, () => {
         console.log("Listening http on port: " + myHttpPort);

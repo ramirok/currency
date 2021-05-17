@@ -1,4 +1,4 @@
-import express from "express";
+import express, { ErrorRequestHandler } from "express";
 import {
   generateNextBlock,
   getBlockchain,
@@ -12,26 +12,23 @@ import {
 import { connectToPeers, getSockets, initP2PServer } from "./p2p";
 import { getTransactionPool } from "./transactionPool";
 import { getPublicFromWallet, initWallet } from "./wallet";
+import _ from "lodash";
+import { UnspentTxOut } from "./transactions";
 
 const httpPort: number = parseInt(process.env.HTTP_PORT as string) || 3001;
 const p2pPort: number = parseInt(process.env.P2P_PORT as string) || 6001;
+
+const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
+  if (err) {
+    res.status(400).send(err.message);
+  }
+};
 
 const initHttpServer = (myHttpPort: number) => {
   const app = express();
   app.use(express.json());
 
-  app.use(
-    (
-      err: any,
-      _req: express.Request,
-      res: express.Response,
-      _next: express.NextFunction
-    ) => {
-      if (err) {
-        res.status(400).send(err.message);
-      }
-    }
-  );
+  app.use(errorHandler);
 
   app.get("/blocks", (_req, res) => {
     res.send(getBlockchain());
@@ -125,6 +122,28 @@ const initHttpServer = (myHttpPort: number) => {
   app.post("/stop", (_req, res) => {
     res.send({ msg: "stopping server" });
     process.exit();
+  });
+
+  app.get("/block/:hash", (req, res) => {
+    const block = _.find(getBlockchain(), { hash: req.params.hash });
+    res.send(block);
+  });
+
+  app.get("/transaction/:id", (req, res) => {
+    const tx = _(getBlockchain())
+      .map((blocks) => blocks.data)
+      .flatten()
+      .find({ id: req.params.id });
+
+    res.send(tx);
+  });
+
+  app.get("/address/:address", (req, res) => {
+    const unspentTxOuts: UnspentTxOut[] = _.filter(
+      getUnspentTxOuts(),
+      (uTxO) => uTxO.address === req.params.address
+    );
+    res.send({ unspentTxOuts: unspentTxOuts });
   });
 
   app.listen(myHttpPort, () => {

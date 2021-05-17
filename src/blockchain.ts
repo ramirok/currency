@@ -258,7 +258,10 @@ const handleReceivedTransaction = (transaction: Transaction) => {
 };
 
 const hashMatchesDifficulty = (hash: string, difficulty: number): boolean => {
-  const hashInBinary: string = hexToBinary(hash);
+  const hashInBinary = hexToBinary(hash);
+  if (hashInBinary === null) {
+    return false;
+  }
   const requiredPrefix: string = "0".repeat(difficulty);
   return hashInBinary.startsWith(requiredPrefix);
 };
@@ -330,9 +333,8 @@ const getDifficulty = (aBlockchain: Block[]): number => {
 };
 
 const getAdjustedDifficulty = (latestBlock: Block, aBlockchain: Block[]) => {
-  const prevAdjustmentBlock: Block = aBlockchain[
-    blockchain.length - DIFFICULTY_ADJUSTMENT_INTERVAL
-  ]!;
+  const prevAdjustmentBlock: Block =
+    aBlockchain[blockchain.length - DIFFICULTY_ADJUSTMENT_INTERVAL]!;
   const timeExpected: number =
     BLOCK_GENERATION_INTERVAL * DIFFICULTY_ADJUSTMENT_INTERVAL;
   const timeTaken: number =
